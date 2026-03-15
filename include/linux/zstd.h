@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+ OR BSD-3-Clause
+/* SPDX-License-Identifier: GPL-2.0+ OR BSD-3-Clause */
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
@@ -136,18 +136,6 @@ typedef ZSTD_parameters zstd_parameters;
 zstd_parameters zstd_get_params(int level,
 	unsigned long long estimated_src_size);
 
-/**
- * zstd_cctx_set_param() - sets a compression parameter
- * @cctx:         The context. Must have been initialized with zstd_init_cctx().
- * @param:        The parameter to set.
- * @value:        The value to set the parameter to.
- *
- * Return:        Zero or an error, which can be checked using zstd_is_error().
- */
-size_t zstd_cctx_set_param(zstd_cctx *cctx, zstd_cparameter param, int value);
-
-/* ======   Single-pass Compression   ====== */
-
 typedef ZSTD_CCtx zstd_cctx;
 typedef ZSTD_cParameter zstd_cparameter;
 
@@ -216,68 +204,6 @@ zstd_cctx *zstd_init_cctx(void *workspace, size_t workspace_size);
  */
 size_t zstd_compress_cctx(zstd_cctx *cctx, void *dst, size_t dst_capacity,
 	const void *src, size_t src_size, const zstd_parameters *parameters);
-
-/* ======   Single-pass Decompression   ====== */
-
-typedef ZSTD_DCtx zstd_dctx;
-typedef ZSTD_cParameter zstd_cparameter;
-
-/**
- * zstd_free_cctx() - Free compression context
- * @cdict:        Pointer to compression context.
- *
- * Return:        Always 0.
- */
-size_t zstd_free_cctx(zstd_cctx* cctx);
-
-/**
- * struct zstd_cdict - Compression dictionary.
- * See zstd_lib.h.
- */
-typedef ZSTD_CDict zstd_cdict;
-
-/**
- * zstd_create_cdict_byreference() - Create compression dictionary
- * @dict:              Pointer to dictionary buffer.
- * @dict_size:         Size of the dictionary buffer.
- * @dict_load_method:  Dictionary load method.
- * @dict_content_type: Dictionary content type.
- * @custom_mem:        Memory allocator.
- *
- * Note, this uses @dict by reference (ZSTD_dlm_byRef), so it should be
- * free before zstd_cdict is destroyed.
- *
- * Return:             NULL on error, pointer to compression dictionary
- *                     otherwise.
- */
-zstd_cdict *zstd_create_cdict_byreference(const void *dict, size_t dict_size,
-					  zstd_compression_parameters cparams,
-					  zstd_custom_mem custom_mem);
-
-/**
- * zstd_free_cdict() - Free compression dictionary
- * @cdict:        Pointer to compression dictionary.
- *
- * Return:        Always 0.
- */
-size_t zstd_free_cdict(zstd_cdict* cdict);
-
-/**
- * zstd_compress_using_cdict() - compress src into dst using a dictionary
- * @cctx:         The context. Must have been initialized with zstd_init_cctx().
- * @dst:          The buffer to compress src into.
- * @dst_capacity: The size of the destination buffer. May be any size, but
- *                ZSTD_compressBound(srcSize) is guaranteed to be large enough.
- * @src:          The data to compress.
- * @src_size:     The size of the data to compress.
- * @cdict:        The dictionary to be used.
- *
- * Return:        The compressed size or an error, which can be checked using
- *                zstd_is_error().
- */
-size_t zstd_compress_using_cdict(zstd_cctx *cctx, void *dst,
-	size_t dst_capacity, const void *src, size_t src_size,
-	const zstd_cdict *cdict);
 
 /* ======   Single-pass Decompression   ====== */
 
@@ -595,8 +521,5 @@ size_t zstd_compress_sequences_and_literals(zstd_cctx *cctx, void* dst, size_t d
 					    const zstd_sequence *in_seqs, size_t in_seqs_size,
 					    const void* literals, size_t lit_size, size_t lit_capacity,
 					    size_t decompressed_size);
-
-#define DSLAB_OPTIMIZE_COMPRESS
-#define DSLAB_L1DCACHE_LOG 16 /* 64KB L1d cache */
 
 #endif  /* LINUX_ZSTD_H */

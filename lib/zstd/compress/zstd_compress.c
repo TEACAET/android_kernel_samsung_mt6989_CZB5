@@ -239,7 +239,6 @@ static ZSTD_ParamSwitch_e ZSTD_resolveRowMatchFinderMode(ZSTD_ParamSwitch_e mode
     /* The Linux Kernel does not use SIMD, and 128KB is a very common size, e.g. in BtrFS.
      * The row match finder is slower for this size without SIMD, so disable it.
      */
-    const unsigned kWindowLogLowerBound = 17;
     if (mode != ZSTD_ps_auto) return mode; /* if requested enabled, but no SIMD, we still will use row matchfinder */
     mode = ZSTD_ps_disable;
     if (!ZSTD_rowMatchFinderSupported(cParams->strategy)) return mode;

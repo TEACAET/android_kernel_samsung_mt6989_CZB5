@@ -810,7 +810,7 @@ static void remove_request(struct adios_data *ad, struct request *rq) {
 
 // Convert a queue depth to the corresponding word depth for shallow allocation
 static int to_word_depth(struct blk_mq_hw_ctx *hctx, unsigned int qdepth) {
-	struct sbitmap_queue *bt = hctx->sched_tags->bitmap_tags;
+	struct sbitmap_queue *bt = &hctx->sched_tags->bitmap_tags;
 	const unsigned int nrr = hctx->queue->nr_requests;
 
 	return ((qdepth << bt->sb.shift) + nrr - 1) / nrr;
@@ -835,7 +835,7 @@ static void adios_depth_updated(struct blk_mq_hw_ctx *hctx) {
 
 	ad->async_depth = q->nr_requests;
 
-	sbitmap_queue_min_shallow_depth(tags->bitmap_tags, 1);
+	sbitmap_queue_min_shallow_depth(&tags->bitmap_tags, 1);
 }
 
 // Handle request merging after a merge operation
@@ -884,8 +884,8 @@ static bool adios_bio_merge(struct request_queue *q, struct bio *bio,
 }
 
 static bool merge_or_insert_to_dl_tree(struct adios_data *ad,
-		struct request *rq, struct request_queue *q) {
-	if (blk_mq_sched_try_insert_merge(q, rq))
+		struct request *rq, struct request_queue *q, struct list_head *free) {
+	if (blk_mq_sched_try_insert_merge(q, rq, free))
 		return true;
 
 	bool dl_idx = adios_optype_not_read(rq);
@@ -921,7 +921,7 @@ static void insert_to_prio_queue(struct adios_data *ad,
 
 // Insert a request into the scheduler (after Read & Write models stabilized)
 static void insert_request_post_stability(struct blk_mq_hw_ctx *hctx,
-		struct request *rq, bool at_head) {
+		struct request *rq, bool at_head, struct list_head *free) {
 	struct request_queue *q = hctx->queue;
 	struct adios_data *ad = q->elevator->elevator_data;
 	struct adios_rq_data *rd = get_rq_data(rq);
@@ -958,13 +958,13 @@ static void insert_request_post_stability(struct blk_mq_hw_ctx *hctx,
 		return;
 	}
 
-	if (merge_or_insert_to_dl_tree(ad, rq, q))
+	if (merge_or_insert_to_dl_tree(ad, rq, q, free))
 		return;
 }
 
 // Insert a request into the scheduler (before Read & Write models stabilizes)
 static void insert_request_pre_stability(struct blk_mq_hw_ctx *hctx,
-		struct request *rq, bool at_head) {
+		struct request *rq, bool at_head, struct list_head *free) {
 	struct adios_data *ad = hctx->queue->elevator->elevator_data;
 	struct adios_rq_data *rd = get_rq_data(rq);
 	u8 optype = adios_optype(rq);
@@ -998,6 +998,7 @@ static void adios_insert_requests(struct blk_mq_hw_ctx *hctx,
 	struct adios_data *ad = q->elevator->elevator_data;
 	struct request *rq;
 	bool stop = false;
+	LIST_HEAD(free);
 
 	do {
 	scoped_guard(spinlock_irqsave, &ad->lock)
@@ -1009,10 +1010,12 @@ static void adios_insert_requests(struct blk_mq_hw_ctx *hctx,
 		rq = list_first_entry(list, struct request, queuelist);
 		list_del_init(&rq->queuelist);
 		if (likely(ad->models_stable))
-			insert_request_post_stability(hctx, rq, at_head);
+			insert_request_post_stability(hctx, rq, at_head, &free);
 		else
-			insert_request_pre_stability(hctx, rq, at_head);
+			insert_request_pre_stability(hctx, rq, at_head, &free);
 	}} while (!stop);
+
+	blk_mq_free_requests(&free);
 }
 
 // Prepare a request before it is inserted into the scheduler
@@ -1035,7 +1038,8 @@ static struct adios_rq_data *get_dl_first_rd(struct adios_data *ad, bool idx) {
 }
 
 // Comparison function for sorting requests by block address
-static int cmp_rq_pos(void *priv, struct list_head *a, struct list_head *b) {
+static int cmp_rq_pos(void *priv,
+		const struct list_head *a, const struct list_head *b) {
 	struct request *rq_a = list_entry(a, struct request, queuelist);
 	struct request *rq_b = list_entry(b, struct request, queuelist);
 	u64 pos_a = blk_rq_pos(rq_a);
@@ -1337,13 +1341,17 @@ static bool release_barrier_requests(struct adios_data *ad) {
 
 	if (!list_empty(&local_list)) {
 		struct request *trq, *next;
+		LIST_HEAD(free_list);
 
 		/* ad->lock is already held */
 		list_for_each_entry_safe(trq, next, &local_list, queuelist) {
 			list_del_init(&trq->queuelist);
-			if (merge_or_insert_to_dl_tree(ad, trq, ad->queue))
+			if (merge_or_insert_to_dl_tree(ad, trq, ad->queue, &free_list))
 				continue;
 		}
+
+		if (!list_empty(&free_list))
+			blk_mq_free_requests(&free_list);
 	}
 
 	return true;

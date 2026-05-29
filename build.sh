@@ -3,7 +3,7 @@
 set -e
 
 # download toolchain from https://opensource.samsung.com/uploadSearch?searchValue=toolchain 
-export PATH=/home/teacaet/桌面/KERNEL/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+export PATH=/home/teacaet/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
 
 echo $PATH
 
